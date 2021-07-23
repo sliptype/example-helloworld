@@ -10,6 +10,8 @@ import {
 import './App.css';
 
 function App() {
+  const [greetedPubkey, setGreetedPubkey] = React.useState('');
+  const [count, setCount] = React.useState(0);
   React.useEffect(() => {
     init();
   }, []);
@@ -19,6 +21,9 @@ function App() {
       <header className="App-header">
         <p>Hello world</p>
         <button onClick={handleClick}>Click Me</button>
+        <div>
+          {greetedPubkey} has been greeted {count} times
+        </div>
       </header>
     </div>
   );
@@ -31,15 +36,23 @@ function App() {
     await establishPayer();
 
     // Check if the program has been deployed
-    await checkProgram();
+    const greetedPubKey = await checkProgram();
+    setGreetedPubkey(greetedPubKey?.toString() ?? '');
+
+    await getCount();
+  }
+
+  async function getCount() {
+    // Find out how many times that account has been greeted
+    const count = await reportGreetings();
+    setCount(count);
   }
 
   async function handleClick() {
     // Say hello to an account
     await sayHello();
 
-    // Find out how many times that account has been greeted
-    await reportGreetings();
+    await getCount();
   }
 }
 

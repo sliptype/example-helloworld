@@ -143,7 +143,7 @@ export async function establishPayer(): Promise<void> {
 /**
  * Check if the hello world BPF program has been deployed
  */
-export async function checkProgram(): Promise<void> {
+export async function checkProgram(): Promise<PublicKey | undefined> {
   // Read program id from keypair file
   try {
     const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
@@ -202,6 +202,8 @@ export async function checkProgram(): Promise<void> {
       }),
     );
     await sendAndConfirmTransaction(connection, transaction, [payer]);
+
+    return greetedPubkey;
   }
 }
 
@@ -225,7 +227,7 @@ export async function sayHello(): Promise<void> {
 /**
  * Report the number of times the greeted account has been said hello to
  */
-export async function reportGreetings(): Promise<void> {
+export async function reportGreetings(): Promise<number> {
   const accountInfo = await connection.getAccountInfo(greetedPubkey);
   if (accountInfo === null) {
     throw 'Error: cannot find the greeted account';
@@ -241,4 +243,6 @@ export async function reportGreetings(): Promise<void> {
     greeting.counter,
     'time(s)',
   );
+
+  return greeting.counter;
 }

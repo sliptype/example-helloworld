@@ -79,6 +79,5 @@ export async function createKeypairFromFile(
   filePath: string,
 ): Promise<Keypair> {
   const secretKey = Uint8Array.from(keypair);
-  console.log(secretKey);
   return Keypair.fromSecretKey(secretKey);
 }
