@@ -2,16 +2,18 @@ import React from 'react';
 
 import {
   establishConnection,
-  establishPayer,
-  checkProgram,
-  sayHello,
-  reportGreetings,
+  createAccount,
+  transfer,
+  getBalance as fetchBalance,
 } from './solana';
 import './App.css';
+import {PublicKey} from '@solana/web3.js';
 
 function App() {
-  const [greetedPubkey, setGreetedPubkey] = React.useState('');
-  const [count, setCount] = React.useState(0);
+  const addressRef = React.useRef<HTMLInputElement>(null);
+  const amountRef = React.useRef<HTMLInputElement>(null);
+  const [account, setAccount] = React.useState('');
+  const [balance, setBalance] = React.useState(0);
   React.useEffect(() => {
     init();
   }, []);
@@ -19,11 +21,14 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <p>Hello world</p>
-        <button onClick={handleClick}>Click Me</button>
-        <div>
-          {greetedPubkey} has been greeted {count} times
-        </div>
+        <p>$BROWSER_COIN</p>
+        <div>Your account is: {account}</div>
+        <div>Your balance is: {balance}</div>
+        <button onClick={getBalance}>Refresh</button>
+        <h2>Transfer</h2>
+        <input ref={addressRef} name="address" placeholder="0x"></input>
+        <input ref={amountRef} name="amount" placeholder="0"></input>
+        <button onClick={handleClick}>Transfer</button>
       </header>
     </div>
   );
@@ -32,27 +37,25 @@ function App() {
     // Establish connection to the cluster
     await establishConnection();
 
-    // Determine who pays for the fees
-    await establishPayer();
+    // Create account
+    const createdAccount = await createAccount();
+    setAccount(createdAccount.toString());
 
-    // Check if the program has been deployed
-    const greetedPubKey = await checkProgram();
-    setGreetedPubkey(greetedPubKey?.toString() ?? '');
-
-    await getCount();
+    getBalance();
   }
 
-  async function getCount() {
-    // Find out how many times that account has been greeted
-    const count = await reportGreetings();
-    setCount(count);
+  async function getBalance() {
+    const b = await fetchBalance();
+    setBalance(Number(b));
   }
 
   async function handleClick() {
-    // Say hello to an account
-    await sayHello();
-
-    await getCount();
+    const address = addressRef.current?.value;
+    const amount = amountRef.current?.value;
+    if (address && amount) {
+      await transfer(new PublicKey(address), Number(amount));
+      getBalance();
+    }
   }
 }
 

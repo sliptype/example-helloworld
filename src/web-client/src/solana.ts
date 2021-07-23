@@ -1,248 +1,105 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
+import {Token, TOKEN_PROGRAM_ID} from '@solana/spl-token';
 import {
   Keypair,
   Connection,
   PublicKey,
-  LAMPORTS_PER_SOL,
-  SystemProgram,
-  TransactionInstruction,
   Transaction,
   sendAndConfirmTransaction,
+  TokenAmount,
+  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
-import fs from 'mz/fs';
-import path from 'path';
-import * as borsh from 'borsh';
 
-import {
-  getPayer,
-  getRpcUrl,
-  newAccountWithLamports,
-  createKeypairFromFile,
-} from './utils';
+const RPC_URL = 'https://api.devnet.solana.com';
 
-/**
- * Connection to the network
- */
+const TOKEN_ADDRESS = new PublicKey(
+  'A1ppnB3P7KtKqEM1eu7qUcxGhnimXN71ty5JVnhDEH2s',
+);
+
+let account: Keypair;
 let connection: Connection;
 
-/**
- * Keypair associated to the fees' payer
- */
-let payer: Keypair;
-
-/**
- * Hello world's program id
- */
-let programId: PublicKey;
-
-/**
- * The public key of the account we are saying hello to
- */
-let greetedPubkey: PublicKey;
-
-/**
- * Path to program files
- */
-const PROGRAM_PATH = path.resolve(__dirname, '../../dist/program');
-
-/**
- * Path to program shared object file which should be deployed on chain.
- * This file is created when running either:
- *   - `npm run build:program-c`
- *   - `npm run build:program-rust`
- */
-const PROGRAM_SO_PATH = path.join(PROGRAM_PATH, 'helloworld.so');
-
-/**
- * Path to the keypair of the deployed program.
- * This file is created when running `solana program deploy dist/program/helloworld.so`
- */
-const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, 'helloworld-keypair.json');
-
-/**
- * The state of a greeting account managed by the hello world program
- */
-class GreetingAccount {
-  counter = 0;
-  constructor(fields: {counter: number} | undefined = undefined) {
-    if (fields) {
-      this.counter = fields.counter;
-    }
-  }
-}
-
-/**
- * Borsh schema definition for greeting accounts
- */
-const GreetingSchema = new Map([
-  [GreetingAccount, {kind: 'struct', fields: [['counter', 'u32']]}],
-]);
-
-/**
- * The expected size of each greeting account.
- */
-const GREETING_SIZE = borsh.serialize(
-  GreetingSchema,
-  new GreetingAccount(),
-).length;
+let token: Token;
 
 /**
  * Establish a connection to the cluster
  */
 export async function establishConnection(): Promise<void> {
-  const rpcUrl = await getRpcUrl();
-  connection = new Connection(rpcUrl, 'confirmed');
+  connection = new Connection(RPC_URL, 'confirmed');
   const version = await connection.getVersion();
-  console.log('Connection to cluster established:', rpcUrl, version);
+  console.log('Connection to cluster established:', RPC_URL, version);
 }
 
 /**
- * Establish an account to pay for everything
+ * Create an account for this session
  */
-export async function establishPayer(): Promise<void> {
-  let fees = 0;
-  if (!payer) {
-    const {feeCalculator} = await connection.getRecentBlockhash();
-
-    // Calculate the cost to fund the greeter account
-    fees += await connection.getMinimumBalanceForRentExemption(GREETING_SIZE);
-
-    // Calculate the cost of sending transactions
-    fees += feeCalculator.lamportsPerSignature * 100; // wag
-
-    try {
-      // Get payer from cli config
-      payer = await getPayer();
-    } catch (err) {
-      // Fund a new payer via airdrop
-      payer = await newAccountWithLamports(connection, fees);
-    }
-  }
-
-  const lamports = await connection.getBalance(payer.publicKey);
-  if (lamports < fees) {
-    // This should only happen when using cli config keypair
-    const sig = await connection.requestAirdrop(
-      payer.publicKey,
-      fees - lamports,
-    );
-    await connection.confirmTransaction(sig);
-  }
-
-  console.log(
-    'Using account',
-    payer.publicKey.toBase58(),
-    'containing',
-    lamports / LAMPORTS_PER_SOL,
-    'SOL to pay for fees',
-  );
-}
-
-/**
- * Check if the hello world BPF program has been deployed
- */
-export async function checkProgram(): Promise<PublicKey | undefined> {
-  // Read program id from keypair file
-  try {
-    const programKeypair = await createKeypairFromFile(PROGRAM_KEYPAIR_PATH);
-    programId = programKeypair.publicKey;
-  } catch (err) {
-    const errMsg = (err as Error).message;
-    throw new Error(
-      `Failed to read program keypair at '${PROGRAM_KEYPAIR_PATH}' due to error: ${errMsg}. Program may need to be deployed with \`solana program deploy dist/program/helloworld.so\``,
-    );
-  }
-
-  // Check if the program has been deployed
-  const programInfo = await connection.getAccountInfo(programId);
-  if (programInfo === null) {
-    if (fs.existsSync(PROGRAM_SO_PATH)) {
-      throw new Error(
-        'Program needs to be deployed with `solana program deploy dist/program/helloworld.so`',
-      );
-    } else {
-      throw new Error('Program needs to be built and deployed');
-    }
-  } else if (!programInfo.executable) {
-    throw new Error(`Program is not executable`);
-  }
-  console.log(`Using program ${programId.toBase58()}`);
-
-  // Derive the address (public key) of a greeting account from the program so that it's easy to find later.
-  const GREETING_SEED = 'hello';
-  greetedPubkey = await PublicKey.createWithSeed(
-    payer.publicKey,
-    GREETING_SEED,
-    programId,
+export async function createAccount(): Promise<PublicKey> {
+  account = Keypair.generate();
+  const fromAirdropSignature = await connection.requestAirdrop(
+    account.publicKey,
+    LAMPORTS_PER_SOL,
   );
 
-  // Check if the greeting account has already been created
-  const greetedAccount = await connection.getAccountInfo(greetedPubkey);
-  if (greetedAccount === null) {
-    console.log(
-      'Creating account',
-      greetedPubkey.toBase58(),
-      'to say hello to',
-    );
-    const lamports = await connection.getMinimumBalanceForRentExemption(
-      GREETING_SIZE,
-    );
+  await connection.confirmTransaction(fromAirdropSignature);
 
-    const transaction = new Transaction().add(
-      SystemProgram.createAccountWithSeed({
-        fromPubkey: payer.publicKey,
-        basePubkey: payer.publicKey,
-        seed: GREETING_SEED,
-        newAccountPubkey: greetedPubkey,
-        lamports,
-        space: GREETING_SIZE,
-        programId,
-      }),
-    );
-    await sendAndConfirmTransaction(connection, transaction, [payer]);
+  token = new Token(connection, TOKEN_ADDRESS, TOKEN_PROGRAM_ID, account);
+  const result = await token.getOrCreateAssociatedAccountInfo(
+    account.publicKey,
+  );
+  console.log(result);
 
-    return greetedPubkey;
-  }
+  return account.publicKey;
 }
 
 /**
- * Say hello
+ * Transfer balance
  */
-export async function sayHello(): Promise<void> {
-  console.log('Saying hello to', greetedPubkey.toBase58());
-  const instruction = new TransactionInstruction({
-    keys: [{pubkey: greetedPubkey, isSigner: false, isWritable: true}],
-    programId,
-    data: Buffer.alloc(0), // All instructions are hellos
-  });
-  await sendAndConfirmTransaction(
+export async function transfer(
+  toTokenAccountAddress: PublicKey,
+  amount: number,
+): Promise<void> {
+  const fromTokenAccount = await token.getOrCreateAssociatedAccountInfo(
+    account.publicKey,
+  );
+
+  const toTokenAccount = await token.getOrCreateAssociatedAccountInfo(
+    toTokenAccountAddress,
+  );
+
+  const transaction = new Transaction().add(
+    Token.createTransferInstruction(
+      TOKEN_PROGRAM_ID,
+      fromTokenAccount.address,
+      toTokenAccount.address,
+      account.publicKey,
+      [],
+      1,
+    ),
+  );
+
+  const signature = await sendAndConfirmTransaction(
     connection,
-    new Transaction().add(instruction),
-    [payer],
+    transaction,
+    [account],
+    {commitment: 'confirmed'},
   );
 }
 
 /**
- * Report the number of times the greeted account has been said hello to
+ * Get the balance
  */
-export async function reportGreetings(): Promise<number> {
-  const accountInfo = await connection.getAccountInfo(greetedPubkey);
-  if (accountInfo === null) {
-    throw 'Error: cannot find the greeted account';
-  }
-  const greeting = borsh.deserialize(
-    GreetingSchema,
-    GreetingAccount,
-    accountInfo.data,
-  );
-  console.log(
-    greetedPubkey.toBase58(),
-    'has been greeted',
-    greeting.counter,
-    'time(s)',
+export async function getBalance(): Promise<number> {
+  const tokenAccount = await token.getOrCreateAssociatedAccountInfo(
+    account.publicKey,
   );
 
-  return greeting.counter;
+  const mainAccount = await token.getAccountInfo(
+    new PublicKey('AiDqWhH712pVjdz8ra9H9bGYCBDEBefrvfZQujySwHBb'),
+  );
+  console.log('main account', mainAccount.amount.toNumber());
+
+  console.log(tokenAccount);
+  return tokenAccount.amount.toNumber();
 }
