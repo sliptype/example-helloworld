@@ -8,7 +8,6 @@ import {
   PublicKey,
   Transaction,
   sendAndConfirmTransaction,
-  TokenAmount,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 
@@ -45,10 +44,7 @@ export async function createAccount(): Promise<PublicKey> {
   await connection.confirmTransaction(fromAirdropSignature);
 
   token = new Token(connection, TOKEN_ADDRESS, TOKEN_PROGRAM_ID, account);
-  const result = await token.getOrCreateAssociatedAccountInfo(
-    account.publicKey,
-  );
-  console.log(result);
+  await token.getOrCreateAssociatedAccountInfo(account.publicKey);
 
   return account.publicKey;
 }
@@ -75,16 +71,13 @@ export async function transfer(
       toTokenAccount.address,
       account.publicKey,
       [],
-      1,
+      amount * 1000000000,
     ),
   );
 
-  const signature = await sendAndConfirmTransaction(
-    connection,
-    transaction,
-    [account],
-    {commitment: 'confirmed'},
-  );
+  await sendAndConfirmTransaction(connection, transaction, [account], {
+    commitment: 'confirmed',
+  });
 }
 
 /**
@@ -94,12 +87,5 @@ export async function getBalance(): Promise<number> {
   const tokenAccount = await token.getOrCreateAssociatedAccountInfo(
     account.publicKey,
   );
-
-  const mainAccount = await token.getAccountInfo(
-    new PublicKey('AiDqWhH712pVjdz8ra9H9bGYCBDEBefrvfZQujySwHBb'),
-  );
-  console.log('main account', mainAccount.amount.toNumber());
-
-  console.log(tokenAccount);
   return tokenAccount.amount.toNumber();
 }
