@@ -8,6 +8,8 @@ import path from 'path';
 import yaml from 'yaml';
 import {Keypair, Connection} from '@solana/web3.js';
 
+import keypair from './helloworld-keypair.json';
+
 export async function newAccountWithLamports(
   connection: Connection,
   lamports = 1000000,
@@ -38,9 +40,10 @@ async function getConfig(): Promise<any> {
 }
 
 /**
- * Load and parse the Solana CLI config file to determine which RPC url to use
+ * Return the RpcUrl
  */
 export async function getRpcUrl(): Promise<string> {
+  return 'https://api.devnet.solana.com';
   try {
     const config = await getConfig();
     if (!config.json_rpc_url) throw new Error('Missing RPC URL');
@@ -75,7 +78,7 @@ export async function getPayer(): Promise<Keypair> {
 export async function createKeypairFromFile(
   filePath: string,
 ): Promise<Keypair> {
-  const secretKeyString = await fs.readFile(filePath, {encoding: 'utf8'});
-  const secretKey = Uint8Array.from(JSON.parse(secretKeyString));
+  const secretKey = Uint8Array.from(keypair);
+  console.log(secretKey);
   return Keypair.fromSecretKey(secretKey);
 }
